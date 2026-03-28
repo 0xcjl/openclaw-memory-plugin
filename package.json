@@ -1,5 +1,5 @@
 {
-  "name": "@0xcjl/openclaw-memory-plugin",
+  "name": "openclaw-memory-plugin",
   "version": "1.0.0",
   "description": "Persistent memory system for OpenClaw multi-agent workflows — keyword indexing, BM25 semantic search, DAG linking, and session hooks.",
   "type": "module",
