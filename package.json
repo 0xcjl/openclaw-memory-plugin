@@ -5,7 +5,12 @@
   "type": "module",
   "main": "index.js",
   "openclaw": {
-    "extensions": ["./index.js"]
+    "extensions": [
+      "./index.js"
+    ],
+    "compat": {
+      "pluginApi": "1.0"
+    }
   },
   "files": [
     "openclaw.plugin.json",

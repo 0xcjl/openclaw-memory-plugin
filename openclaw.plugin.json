@@ -48,5 +48,9 @@
       "advanced": true,
       "help": "Override the default workspace root path"
     }
-  }
+  },
+  "author": "Jialin (0xcjl)",
+  "license": "MIT",
+  "homepage": "https://github.com/0xcjl/openclaw-memory-plugin",
+  "repository": "https://github.com/0xcjl/openclaw-memory-plugin"
 }
