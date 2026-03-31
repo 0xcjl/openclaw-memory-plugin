@@ -2,7 +2,7 @@
   "id": "openclaw-memory-system",
   "name": "OpenClaw Memory System",
   "description": "Persistent memory system for OpenClaw multi-agent workflows — keyword indexing, BM25 semantic search, DAG-based memory linking, and session lifecycle hooks.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "memory",
   "skills": [
     "./skills/memory-recall"
