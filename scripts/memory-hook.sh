@@ -64,37 +64,42 @@ hook_before_task() {
   log "before-task recall: ${task:0:60}"
 
   local recall_output elapsed_ms
+  # FIX: Pass args via argv (no shell injection risk).
+  # Previously used embedded variables in python -c string (shell injection).
   recall_output=$(python3 -c "
 import sys, time, subprocess, json
 
 start = time.perf_counter()
-task_s = '''$task'''
-agent_s = '''$AGENT_ID'''
-bm25_exe = '''$BM25'''
-idx_exe = '''$INDEXER'''
+args = sys.argv[1:]
+if not args:
+    sys.exit(1)
+task_s = args[0]
+agent_s = args[1]
+bm25_exe = args[2]
+idx_exe = args[3]
 
-# Try BM25 first
 try:
     r = subprocess.run(['python3', bm25_exe, '--search', task_s, '--agent-id', agent_s, '--top', '3', '--json'],
                       capture_output=True, timeout=3)
     if r.returncode == 0 and r.stdout.strip():
         data = json.loads(r.stdout)
         if data:
-            sys.stdout.write(r.stdout.decode())
+            sys.stdout.write(r.stdout)
             sys.exit(0)
-except: pass
+except Exception as e:
+    sys.stderr.write(str(e) + '\n')
 
-# Fall back to keyword indexer
 try:
     r = subprocess.run(['python3', idx_exe, '--search', task_s, '--agent-id', agent_s, '--top', '3', '--json'],
                       capture_output=True, timeout=3)
     if r.returncode == 0 and r.stdout.strip():
-        sys.stdout.write(r.stdout.decode())
-except: pass
+        sys.stdout.write(r.stdout)
+except Exception as e:
+    sys.stderr.write(str(e) + '\n')
 
 elapsed_ms = (time.perf_counter() - start) * 1000
 sys.stderr.write('HOOK_ELAPSED:' + str(int(elapsed_ms)) + 'ms\n')
-" 2>&1) || true
+" "$task" "$AGENT_ID" "$BM25" "$INDEXER" 2>&1) || true
 
   echo ""
   echo "## 记忆召回 (before-task)"
@@ -175,35 +180,49 @@ hook_after_task() {
 
   local output_file="$date_dir/${AGENT_ID}-${slug}.md"
 
-  local result_content=""
-  [[ -n "$result_file" && -f "$result_file" ]] && result_content=$(cat "$result_file")
+  # FIX: Read result file via Python argv to prevent command injection in heredoc.
+  # Previously used: result_content=$(cat "$result_file") then embedded in heredoc,
+  # which would execute $(...) or `...` in the file content via bash expansion.
+  python3 -c "
+import sys, os, re
+from datetime import datetime
 
-  cat > "$output_file" <<EOF
-## $task
+task         = sys.argv[1]
+agent_id     = sys.argv[2]
+output_file  = sys.argv[3]
+result_file  = sys.argv[4] if len(sys.argv) > 4 else ''
 
-**Agent:** $AGENT_ID
-**时间:** $(date '+%Y-%m-%d %H:%M:%S')
-**Shared:** false
+result_content = ''
+if result_file and os.path.exists(result_file):
+    try:
+        with open(result_file) as f:
+            result_content = f.read()
+    except Exception:
+        result_content = ''
 
-### 任务描述
-$task
-
-### 关键输出
-$result_content
-
-### 标签
-EOF
-
-  # Auto-tag
-  echo "$task" | python3 -c "
-import sys, re
-text = sys.stdin.read().lower()
+# Extract tags from task
+text = (task + ' ' + result_content).lower()
 words = re.findall(r'\b[a-z][a-z0-9]{2,}\b', text)
-stop = {'the','and','for','with','from','this','that','task','agent','memory','hook','after','before'}
-tags = sorted(set(w for w in words if w not in stop))
-print('  - ' + '\n  - '.join(tags[:8]))
-" >> "$output_file"
-  echo "" >> "$output_file"
+stop = {'the','and','for','with','from','this','that','task','agent','memory',
+        'hook','after','before','python','file','path','dir','function','class',
+        'method','def','return','import','export','default','none','null',
+        'true','false','code','use','used','note','make','new','set','get'}
+tags = sorted(set(w for w in words if w not in stop))[:8]
+
+with open(output_file, 'w', encoding='utf-8') as f:
+    f.write('## ' + task + '\n\n')
+    f.write('**Agent:** ' + agent_id + '\n')
+    f.write('**时间:** ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\n')
+    f.write('**Shared:** false\n\n')
+    f.write('### 任务描述\n')
+    f.write(task + '\n\n')
+    f.write('### 关键输出\n')
+    f.write(result_content + '\n\n')
+    f.write('### 标签\n')
+    for tag in tags:
+        f.write('  - ' + tag + '\n')
+    f.write('\n')
+" "$task" "$AGENT_ID" "$output_file" "$result_file"
 
   ok "Saved → $output_file"
 
@@ -227,22 +246,40 @@ hook_dag_link() {
   local dag_file="$MEMORY_DIR/dag/links.json"
   mkdir -p "$MEMORY_DIR/dag"
 
-  local new_link
-  new_link=$(printf '{"from":"%s","to":"%s","reason":"%s","agent_id":"%s","created_at":"%s"}' \
-    "$memory_id" "$linked_id" "$reason" "$AGENT_ID" "$(date -Iseconds)")
+  # FIX: Use Python json.dumps to safely serialize all fields (prevents JSON injection).
+  # Previously $reason was embedded directly via printf with no escaping.
+  python3 -c "
+import json, sys, os
+from datetime import datetime
 
-  if [[ -f "$dag_file" ]]; then
-    python3 -c "
-import json, sys
-with open('$dag_file') as f:
-    arr = json.load(f)
-arr.append(json.loads('''$new_link'''))
-with open('$dag_file', 'w') as f:
+memory_id = sys.argv[1]
+linked_id = sys.argv[2]
+reason    = sys.argv[3]
+agent_id  = sys.argv[4]
+dag_file  = sys.argv[5]
+
+new_link = {
+    'from': memory_id,
+    'to': linked_id,
+    'reason': reason,
+    'agent_id': agent_id,
+    'created_at': datetime.now().isoformat()
+}
+
+if os.path.exists(dag_file):
+    try:
+        with open(dag_file) as f:
+            arr = json.load(f)
+    except Exception:
+        arr = []
+else:
+    arr = []
+
+arr.append(new_link)
+
+with open(dag_file, 'w') as f:
     json.dump(arr, f, ensure_ascii=False, indent=2)
-" 2>/dev/null || echo "[$new_link]" > "$dag_file"
-  else
-    echo "[$new_link]" > "$dag_file"
-  fi
+" "$memory_id" "$linked_id" "$reason" "$AGENT_ID" "$dag_file" 2>/dev/null && ok "DAG link: $memory_id → $linked_id" || err "Failed to write DAG link"
   ok "DAG link: $memory_id → $linked_id"
 }
 

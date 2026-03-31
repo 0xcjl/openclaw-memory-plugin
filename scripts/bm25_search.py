@@ -17,6 +17,7 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -176,7 +177,7 @@ def build_bm25_index(agent_id: str = "dev") -> BM25Index:
     return bm
 
 
-def load_bm25_index() -> BM25Index | None:
+def load_bm25_index() -> Optional["BM25Index"]:
     """Load existing BM25 index or return None."""
     if not BM25_INDEX.exists():
         return None

@@ -24,6 +24,7 @@ import sys
 from collections import defaultdict, deque
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ class MemoryDAG:
         visited.discard(node_id)
         return visited
 
-    def shortest_path(self, from_id: str, to_id: str) -> list[str] | None:
+    def shortest_path(self, from_id: str, to_id: str) -> Optional[list]:
         """BFS shortest path from from_id to to_id. Returns None if unreachable."""
         if from_id == to_id:
             return [from_id]
